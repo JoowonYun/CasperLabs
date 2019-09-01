@@ -82,14 +82,17 @@ object DeploySelection {
                 _                                  <- handleInvalidDeploys[F](invalidDeploys)
               } yield {
                 effectfulDeploys.foldLeftM(state) {
-                  case (chosenDeploys, element) =>
+                  case (accState, element) =>
+                    // newState is either `accState` if `element` doesn't commute,
+                    // or contains `element` if it does.
+                    val newState = commutes(accState, element)
                     // TODO: Use some base `Block` element to measure the size.
                     // If size if accumulated deploys is over 90% of the block limit, stop consuming more deploys.
-                    if ((chosenDeploys.size + element.deploy.serializedSize) > (0.9 * sizeLimitMB)) {
-                      chosenDeploys.asLeft[IntermediateState]
-                    } else {
-                      commutes(chosenDeploys, element).asRight[IntermediateState]
-                    }
+                    if (newState.size > (0.9 * sizeLimitMB)) {
+                      // foldM will short-circuit for `Left`
+                      // and continue for `Right`
+                      accState.asLeft[IntermediateState]
+                    } else newState.asRight[IntermediateState]
                 }
               }
           }
